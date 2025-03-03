@@ -1,80 +1,448 @@
-import Link from "next/link";
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useChat } from 'ai/react';
 
 export default function Home() {
+  // State for operation selection
+  const [selectedOperations, setSelectedOperations] = useState({
+    addition: true,
+    subtraction: false,
+    multiplication: false,
+    division: false
+  });
+  
+  // State for game flow
+  const [gameStarted, setGameStarted] = useState(false);
+  const [problem, setProblem] = useState<string>('');
+  const [answer, setAnswer] = useState<string>('');
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const [showHint, setShowHint] = useState<boolean>(false);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [correctAnswer, setCorrectAnswer] = useState<number | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [hintAudioUrl, setHintAudioUrl] = useState<string | null>(null);
+  const [workingSteps, setWorkingSteps] = useState<string>('');
+  
+  // Refs for audio elements
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const hintAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // OpenAI chat integration
+  const { messages, append, isLoading } = useChat({
+    api: '/api/openai/chat',
+  });
+
+  // Handle operation checkbox changes
+  const handleOperationChange = (operation: string) => {
+    setSelectedOperations(prev => ({
+      ...prev,
+      [operation]: !prev[operation as keyof typeof prev]
+    }));
+  };
+
+  // Start the game with selected operations
+  const startGame = () => {
+    // Ensure at least one operation is selected
+    if (!Object.values(selectedOperations).some(value => value)) {
+      alert('Please select at least one operation');
+      return;
+    }
+    
+    setGameStarted(true);
+    generateProblem();
+  };
+
+  // Generate a new math problem based on selected operations
+  const generateProblem = async () => {
+    setIsGenerating(true);
+    setIsCorrect(null);
+    setShowHint(false);
+    setAnswer('');
+    setWorkingSteps('');
+    
+    // Get selected operations
+    const operations = Object.entries(selectedOperations)
+      .filter(([_, selected]) => selected)
+      .map(([op, _]) => op);
+    
+    if (operations.length === 0) {
+      setIsGenerating(false);
+      return;
+    }
+    
+    try {
+      await append({
+        role: 'user',
+        content: `Generate a math problem for a child using one of these operations: ${operations.join(', ')}. 
+        Return ONLY a JSON object with the following format:
+        {
+          "problem": "The math problem as text (e.g., '5 + 3 = ?')",
+          "answer": The numerical answer (e.g., 8),
+          "hebrewQuestion": "The question in Hebrew",
+          "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem",
+          "workingSteps": "Optional step-by-step working in mathematical notation to help visualize the solution process"
+        }`
+      });
+    } catch (error) {
+      console.error('Error generating problem:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Process the response from the AI
+  useEffect(() => {
+    if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+      try {
+        const content = messages[messages.length - 1].content;
+        // Extract JSON from the response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        
+        if (jsonMatch) {
+          const problemData = JSON.parse(jsonMatch[0]);
+          setProblem(problemData.problem);
+          setCorrectAnswer(problemData.answer);
+          
+          // Set working steps if available
+          if (problemData.workingSteps) {
+            setWorkingSteps(problemData.workingSteps);
+          }
+          
+          // Generate audio for the question in Hebrew
+          generateSpeech(problemData.hebrewQuestion, 'question');
+          
+          // Generate audio for the hint in Hebrew
+          generateSpeech(problemData.hebrewHint, 'hint');
+          
+          // Automatically play the question audio
+          setTimeout(() => {
+            if (audioRef.current) {
+              audioRef.current.src = `/api/tts?text=${encodeURIComponent(problemData.hebrewQuestion)}`;
+              audioRef.current.load();
+              audioRef.current.play().catch(err => {
+                console.error('Error auto-playing audio:', err);
+              });
+            }
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Error parsing problem data:', error);
+      }
+    }
+  }, [messages]);
+
+  // Generate speech using a text-to-speech service
+  const generateSpeech = async (text: string, type: 'question' | 'hint') => {
+    console.log(`Generating ${type} speech for: ${text}`);
+    
+    // Create a direct URL to the TTS API
+    if (type === 'question') {
+      setAudioUrl(`/api/tts?text=${encodeURIComponent(text)}`);
+    } else {
+      setHintAudioUrl(`/api/tts?text=${encodeURIComponent(text)}`);
+    }
+  };
+
+  // Check the user's answer
+  const checkAnswer = () => {
+    const userAnswer = parseFloat(answer);
+    
+    if (isNaN(userAnswer)) {
+      return;
+    }
+    
+    setIsCorrect(userAnswer === correctAnswer);
+    
+    // If incorrect, show hint automatically
+    if (userAnswer !== correctAnswer) {
+      setShowHint(true);
+      // Play hint audio
+      setTimeout(() => {
+        playHintAudio();
+      }, 500);
+    } else {
+      // If correct, generate a new problem after a short delay
+      setTimeout(() => {
+        generateProblem();
+      }, 1500);
+    }
+  };
+
+  // Handle Enter key press in the answer input
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      checkAnswer();
+    }
+  };
+
+  // Play the question audio
+  const playQuestionAudio = () => {
+    if (audioRef.current && audioUrl) {
+      audioRef.current.src = audioUrl;
+      audioRef.current.load();
+      audioRef.current.play().catch(err => {
+        console.error('Error playing audio:', err);
+      });
+    }
+  };
+
+  // Play the hint audio
+  const playHintAudio = () => {
+    if (hintAudioRef.current && hintAudioUrl) {
+      hintAudioRef.current.src = hintAudioUrl;
+      hintAudioRef.current.load();
+      hintAudioRef.current.play().catch(err => {
+        console.error('Error playing hint audio:', err);
+      });
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-8 bg-gradient-to-b from-blue-50 to-indigo-100">
-      <div className="w-full max-w-5xl">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-indigo-700 mb-4">Math Adventure</h1>
-          <p className="text-xl text-gray-600">
-            A fun way to improve math skills with interactive exercises and Hebrew voice guidance
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-          <Link href="/math/addition" className="block">
-            <div className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-all hover:scale-105 border-2 border-indigo-200">
-              <h2 className="text-3xl font-bold text-indigo-600 mb-4">חיבור</h2>
-              <h2 className="text-2xl font-bold text-gray-700 mb-4">Addition</h2>
-              <p className="text-gray-600">Practice adding numbers with fun exercises</p>
-              <div className="mt-4 text-4xl font-bold text-indigo-500">1 + 2 = 3</div>
-            </div>
-          </Link>
-
-          <Link href="/math/subtraction" className="block">
-            <div className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-all hover:scale-105 border-2 border-indigo-200">
-              <h2 className="text-3xl font-bold text-indigo-600 mb-4">חיסור</h2>
-              <h2 className="text-2xl font-bold text-gray-700 mb-4">Subtraction</h2>
-              <p className="text-gray-600">Learn to subtract numbers with interactive problems</p>
-              <div className="mt-4 text-4xl font-bold text-indigo-500">5 - 2 = 3</div>
-            </div>
-          </Link>
-
-          <Link href="/math/multiplication" className="block">
-            <div className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-all hover:scale-105 border-2 border-indigo-200">
-              <h2 className="text-3xl font-bold text-indigo-600 mb-4">כפל</h2>
-              <h2 className="text-2xl font-bold text-gray-700 mb-4">Multiplication</h2>
-              <p className="text-gray-600">Master multiplication with guided exercises</p>
-              <div className="mt-4 text-4xl font-bold text-indigo-500">3 × 4 = 12</div>
-            </div>
-          </Link>
-
-          <Link href="/math/division" className="block">
-            <div className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-all hover:scale-105 border-2 border-indigo-200">
-              <h2 className="text-3xl font-bold text-indigo-600 mb-4">חילוק</h2>
-              <h2 className="text-2xl font-bold text-gray-700 mb-4">Division</h2>
-              <p className="text-gray-600">Learn division with step-by-step guidance</p>
-              <div className="mt-4 text-4xl font-bold text-indigo-500">8 ÷ 2 = 4</div>
-            </div>
-          </Link>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-          <h2 className="text-2xl font-bold text-indigo-600 mb-4">How It Works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-            <div className="flex flex-col items-center">
-              <div className="bg-indigo-100 rounded-full w-16 h-16 flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-indigo-600">1</span>
+    <main className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100 py-8 px-4">
+      <div className="max-w-5xl mx-auto">
+        <h1 className="text-4xl font-bold text-center text-indigo-700 mb-8">Ari's Math Adventure</h1>
+        
+        {!gameStarted ? (
+          <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+            <h2 className="text-2xl font-bold text-indigo-600 mb-6">Choose Math Operations</h2>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="addition"
+                  checked={selectedOperations.addition}
+                  onChange={() => handleOperationChange('addition')}
+                  className="w-5 h-5 text-indigo-600"
+                />
+                <label htmlFor="addition" className="text-xl">
+                  <span className="font-semibold">חיבור</span> | Addition
+                </label>
               </div>
-              <h3 className="text-lg font-semibold mb-2">Choose a Category</h3>
-              <p className="text-gray-600">Select which math skill you want to practice</p>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="bg-indigo-100 rounded-full w-16 h-16 flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-indigo-600">2</span>
+              
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="subtraction"
+                  checked={selectedOperations.subtraction}
+                  onChange={() => handleOperationChange('subtraction')}
+                  className="w-5 h-5 text-indigo-600"
+                />
+                <label htmlFor="subtraction" className="text-xl">
+                  <span className="font-semibold">חיסור</span> | Subtraction
+                </label>
               </div>
-              <h3 className="text-lg font-semibold mb-2">Solve Problems</h3>
-              <p className="text-gray-600">Listen to the question in Hebrew and solve the problem</p>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="bg-indigo-100 rounded-full w-16 h-16 flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-indigo-600">3</span>
+              
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="multiplication"
+                  checked={selectedOperations.multiplication}
+                  onChange={() => handleOperationChange('multiplication')}
+                  className="w-5 h-5 text-indigo-600"
+                />
+                <label htmlFor="multiplication" className="text-xl">
+                  <span className="font-semibold">כפל</span> | Multiplication
+                </label>
               </div>
-              <h3 className="text-lg font-semibold mb-2">Get Help When Needed</h3>
-              <p className="text-gray-600">Use hints with voice guidance to understand the solution</p>
+              
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="division"
+                  checked={selectedOperations.division}
+                  onChange={() => handleOperationChange('division')}
+                  className="w-5 h-5 text-indigo-600"
+                />
+                <label htmlFor="division" className="text-xl">
+                  <span className="font-semibold">חילוק</span> | Division
+                </label>
+              </div>
             </div>
+            
+            <button
+              onClick={startGame}
+              className="w-full py-4 bg-indigo-600 text-white text-xl font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Let's Play!
+            </button>
           </div>
-        </div>
+        ) : (
+          <>
+            {/* Game interface */}
+            <div className="mb-6 flex justify-between items-center">
+              <button
+                onClick={() => setGameStarted(false)}
+                className="text-indigo-600 hover:text-indigo-800 flex items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+                </svg>
+                Back to Settings
+              </button>
+              
+              <button
+                onClick={generateProblem}
+                disabled={isGenerating || isLoading}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400"
+              >
+                {isGenerating ? 'Generating...' : 'New Problem'}
+              </button>
+            </div>
+            
+            {/* Problem display */}
+            <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-700">Problem:</h2>
+                {audioUrl && (
+                  <button
+                    onClick={playQuestionAudio}
+                    className="flex items-center text-indigo-600 hover:text-indigo-800"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    Listen
+                  </button>
+                )}
+              </div>
+              
+              {isGenerating ? (
+                <div className="animate-pulse flex space-x-4">
+                  <div className="flex-1 space-y-4 py-1">
+                    <div className="h-12 bg-gray-200 rounded w-3/4"></div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-4xl font-bold text-center py-8 text-gray-800">{problem}</div>
+              )}
+              
+              {/* Hidden audio elements */}
+              <audio ref={audioRef} preload="none" />
+              <audio ref={hintAudioRef} preload="none" />
+            </div>
+            
+            {/* Answer input */}
+            <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+              <h2 className="text-xl font-semibold text-gray-700 mb-4">Your Answer:</h2>
+              <div className="flex items-center space-x-4">
+                <input
+                  type="number"
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  className="flex-1 p-4 text-2xl border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="Enter your answer..."
+                  disabled={isGenerating || isLoading}
+                />
+                <button
+                  onClick={checkAnswer}
+                  disabled={!answer || isGenerating || isLoading}
+                  className="bg-green-600 text-white px-6 py-4 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 text-xl"
+                >
+                  Submit
+                </button>
+              </div>
+              
+              {/* Feedback */}
+              {isCorrect !== null && (
+                <div className={`mt-4 p-4 rounded-lg ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {isCorrect ? (
+                    <div className="flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Correct! Great job!</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span>Not quite right. Check out the hint below!</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Hint section */}
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-700">Need Help?</h2>
+                {hintAudioUrl && showHint && (
+                  <button
+                    onClick={playHintAudio}
+                    className="flex items-center text-indigo-600 hover:text-indigo-800"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    Listen to Hint
+                  </button>
+                )}
+              </div>
+              
+              {!showHint ? (
+                <button
+                  onClick={() => {
+                    setShowHint(true);
+                    playHintAudio();
+                  }}
+                  className="w-full py-3 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors"
+                >
+                  Show Hint
+                </button>
+              ) : (
+                <div className="p-4 bg-indigo-50 rounded-lg">
+                  {messages.length > 0 && messages[messages.length - 1].role === 'assistant' ? (
+                    <div>
+                      <h3 className="font-semibold mb-2">How to solve this problem:</h3>
+                      <div className="math-solution p-4 bg-white rounded border border-indigo-200">
+                        {(() => {
+                          try {
+                            const content = messages[messages.length - 1].content;
+                            const jsonMatch = content.match(/\{[\s\S]*\}/);
+                            if (jsonMatch) {
+                              const problemData = JSON.parse(jsonMatch[0]);
+                              return (
+                                <div>
+                                  <p className="mb-2 text-gray-800">{problemData.hebrewHint}</p>
+                                  
+                                  {/* Working steps visualization */}
+                                  {workingSteps && (
+                                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                                      <h4 className="font-semibold mb-2">Working Steps:</h4>
+                                      <pre className="whitespace-pre-wrap font-mono text-sm">{workingSteps}</pre>
+                                    </div>
+                                  )}
+                                  
+                                  <p className="mt-4 font-semibold">Answer: {problemData.answer}</p>
+                                </div>
+                              );
+                            }
+                            return "Hint not available";
+                          } catch (error) {
+                            return "Error displaying hint";
+                          }
+                        })()}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="animate-pulse flex space-x-4">
+                      <div className="flex-1 space-y-4 py-1">
+                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                        <div className="h-4 bg-gray-200 rounded"></div>
+                        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </main>
   );
