@@ -42,6 +42,7 @@ export default function Home() {
   // Refs for audio elements
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hintAudioRef = useRef<HTMLAudioElement | null>(null);
+  const feedbackAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Add ref for input focus
   const inputRef = useRef<HTMLInputElement>(null);
@@ -257,7 +258,19 @@ Return ONLY a JSON object with the following format:
     }
   };
 
-  // Modify checkAnswer to update performance history without difficulty calculation
+  // Function to play random feedback audio
+  const playRandomFeedback = () => {
+    if (feedbackAudioRef.current) {
+      const feedbackNumber = Math.floor(Math.random() * 10) + 1;
+      feedbackAudioRef.current.src = `/audio/feedback${feedbackNumber}.mp3`;
+      feedbackAudioRef.current.load();
+      feedbackAudioRef.current.play().catch(err => {
+        console.error('Error playing feedback audio:', err);
+      });
+    }
+  };
+
+  // Modify checkAnswer to play feedback audio when correct
   const checkAnswer = () => {
     // Clear previous error
     setInputError(null);
@@ -288,8 +301,9 @@ Return ONLY a JSON object with the following format:
     }];
     setPerformanceHistory(newHistory);
     
-    // If correct, generate a new problem after a short delay
+    // If correct, play feedback and generate new problem after a delay
     if (isCorrect) {
+      playRandomFeedback();
       setTimeout(() => {
         generateProblem();
       }, 1500);
@@ -362,6 +376,7 @@ Return ONLY a JSON object with the following format:
               {/* Hidden audio elements */}
               <audio ref={audioRef} preload="none" />
               <audio ref={hintAudioRef} preload="none" />
+              <audio ref={feedbackAudioRef} preload="none" />
             </div>
             
             {/* Answer input */}
