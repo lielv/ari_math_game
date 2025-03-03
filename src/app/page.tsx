@@ -167,14 +167,8 @@ export default function Home() {
     
     setIsCorrect(userAnswer === correctAnswer);
     
-    // If incorrect, show hint automatically
-    if (userAnswer !== correctAnswer) {
-      setShowHint(true);
-      // Play hint audio
-      setTimeout(() => {
-        playHintAudio();
-      }, 500);
-    } else {
+    // Don't show hint automatically anymore
+    if (userAnswer === correctAnswer) {
       // If correct, generate a new problem after a short delay
       setTimeout(() => {
         generateProblem();
@@ -218,7 +212,7 @@ export default function Home() {
         <h2 className="text-xl font-bold text-indigo-600 mb-6">Math Operations</h2>
         
         <div className="space-y-4 mb-8">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center">
             <input
               type="checkbox"
               id="addition"
@@ -226,12 +220,12 @@ export default function Home() {
               onChange={() => handleOperationChange('addition')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="addition" className="text-lg flex items-center">
-              <span className="font-semibold ml-2">חיבור</span> | <span className="ml-1">Addition (+)</span>
+            <label htmlFor="addition" className="text-lg ml-3 flex-1">
+              <span className="font-semibold">חיבור</span> | Addition (+)
             </label>
           </div>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center">
             <input
               type="checkbox"
               id="subtraction"
@@ -239,12 +233,12 @@ export default function Home() {
               onChange={() => handleOperationChange('subtraction')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="subtraction" className="text-lg flex items-center">
-              <span className="font-semibold ml-2">חיסור</span> | <span className="ml-1">Subtraction (-)</span>
+            <label htmlFor="subtraction" className="text-lg ml-3 flex-1">
+              <span className="font-semibold">חיסור</span> | Subtraction (-)
             </label>
           </div>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center">
             <input
               type="checkbox"
               id="multiplication"
@@ -252,12 +246,12 @@ export default function Home() {
               onChange={() => handleOperationChange('multiplication')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="multiplication" className="text-lg flex items-center">
-              <span className="font-semibold ml-2">כפל</span> | <span className="ml-1">Multiplication (×)</span>
+            <label htmlFor="multiplication" className="text-lg ml-3 flex-1">
+              <span className="font-semibold">כפל</span> | Multiplication (×)
             </label>
           </div>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center">
             <input
               type="checkbox"
               id="division"
@@ -265,8 +259,8 @@ export default function Home() {
               onChange={() => handleOperationChange('division')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="division" className="text-lg flex items-center">
-              <span className="font-semibold ml-2">חילוק</span> | <span className="ml-1">Division (÷)</span>
+            <label htmlFor="division" className="text-lg ml-3 flex-1">
+              <span className="font-semibold">חילוק</span> | Division (÷)
             </label>
           </div>
         </div>
@@ -362,11 +356,6 @@ export default function Home() {
                     placeholder="Enter your answer..."
                     disabled={isGenerating || isLoading}
                   />
-                  {answer && (
-                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-2xl text-gray-500">
-                      = {answer}
-                    </div>
-                  )}
                 </div>
                 <button
                   onClick={checkAnswer}
@@ -399,7 +388,7 @@ export default function Home() {
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                      <span>Not quite right. Check out the hint below!</span>
+                      <span>Not quite right. Try again or use the hint below.</span>
                     </div>
                   )}
                 </div>
