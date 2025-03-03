@@ -17,21 +17,10 @@ export async function GET(request: Request) {
     }
 
     // In a real implementation, you would call a TTS service here
-    // For now, we'll return a mock response
+    // For now, we'll redirect to our mock audio endpoint
     
-    // This is a placeholder for the actual TTS implementation
-    // You would use a service like Google Cloud TTS, Amazon Polly, etc.
-    // Or use OpenAI's TTS API when available
-    
-    // For demonstration purposes, we'll return a success response
-    // In a real app, you would return the audio data or a URL to the audio file
-    return NextResponse.json({
-      success: true,
-      message: 'TTS request received',
-      text: text,
-      // In a real implementation, this would be a URL to the audio file
-      audioUrl: `/api/mock-audio?text=${encodeURIComponent(text)}`,
-    });
+    // Redirect to the mock-audio endpoint
+    return NextResponse.redirect(new URL(`/api/mock-audio?text=${encodeURIComponent(text)}`, request.url));
     
     // Example of how you might use OpenAI's TTS API when it becomes available:
     /*

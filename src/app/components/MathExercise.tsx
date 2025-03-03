@@ -85,14 +85,10 @@ export default function MathExercise({
     // This is a placeholder for actual TTS implementation
     // In a real app, you would call a TTS API here
     
-    // For now, we'll simulate this with a mock function
-    // In a production app, you would use a service like Google Cloud TTS, Amazon Polly, etc.
     console.log(`Generating ${type} speech for: ${text}`);
     
-    // Simulate TTS by creating a URL to a pre-recorded audio file
-    // In a real implementation, you would generate this dynamically
+    // Create a direct URL to the TTS API
     if (type === 'question') {
-      // This is just a placeholder - you would replace with actual TTS service
       setAudioUrl(`/api/tts?text=${encodeURIComponent(text)}`);
     } else {
       setHintAudioUrl(`/api/tts?text=${encodeURIComponent(text)}`);
@@ -113,6 +109,8 @@ export default function MathExercise({
   // Play the question audio
   const playQuestionAudio = () => {
     if (audioRef.current && audioUrl) {
+      audioRef.current.src = audioUrl;
+      audioRef.current.load();
       audioRef.current.play().catch(err => {
         console.error('Error playing audio:', err);
       });
@@ -122,6 +120,8 @@ export default function MathExercise({
   // Play the hint audio
   const playHintAudio = () => {
     if (hintAudioRef.current && hintAudioUrl) {
+      hintAudioRef.current.src = hintAudioUrl;
+      hintAudioRef.current.load();
       hintAudioRef.current.play().catch(err => {
         console.error('Error playing hint audio:', err);
       });
@@ -176,8 +176,8 @@ export default function MathExercise({
         )}
         
         {/* Hidden audio elements */}
-        {audioUrl && <audio ref={audioRef} src={audioUrl} />}
-        {hintAudioUrl && <audio ref={hintAudioRef} src={hintAudioUrl} />}
+        <audio ref={audioRef} preload="none" />
+        <audio ref={hintAudioRef} preload="none" />
       </div>
 
       {/* Answer input */}
