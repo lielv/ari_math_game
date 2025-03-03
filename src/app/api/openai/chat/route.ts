@@ -29,13 +29,15 @@ export async function POST(req: Request) {
       5. Always format your response as a valid JSON object
       6. Make sure the Hebrew translations are accurate and helpful
       7. Include visual representations of the working steps when helpful (using ASCII art or simple notation)
+      8. In Hebrew translations (hebrewQuestion and hebrewHint), all numbers MUST be written as words
+         For example: "2 + 2" should be "שתיים ועוד שתיים" not "2 ועוד 2"
       
       Always return your response in this exact JSON format:
       {
         "problem": "The math problem as text (e.g., '5 + 3 = ?')",
         "answer": The numerical answer (e.g., 8),
-        "hebrewQuestion": "The question in Hebrew",
-        "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem",
+        "hebrewQuestion": "The question in Hebrew with numbers as words",
+        "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem, with numbers as words",
         "workingSteps": "Optional step-by-step working in mathematical notation to help visualize the solution process"
       }`,
     });
