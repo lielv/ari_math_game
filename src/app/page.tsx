@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useChat } from 'ai/react';
+import { gameConfig } from './lib/gameConfig';
 
 export default function Home() {
   // State for operation selection
@@ -10,6 +11,17 @@ export default function Home() {
     subtraction: false,
     multiplication: false,
     division: false
+  });
+  
+  // Add performance tracking state with initial history from config
+  const [performanceHistory, setPerformanceHistory] = useState<Array<{ correct: boolean, problem: string, userAnswer: number, correctAnswer: number }>>(() => {
+    // Combine all operation histories into a single array
+    return [
+      ...gameConfig.initialPerformanceHistory.addition,
+      ...gameConfig.initialPerformanceHistory.subtraction,
+      ...gameConfig.initialPerformanceHistory.multiplication,
+      ...gameConfig.initialPerformanceHistory.division
+    ];
   });
   
   // State for game flow
@@ -64,7 +76,7 @@ export default function Home() {
     generateProblem();
   };
 
-  // Generate a new math problem based on selected operations
+  // Modify generateProblem to use performance history
   const generateProblem = async () => {
     setIsGenerating(true);
     setIsCorrect(null);
@@ -83,23 +95,82 @@ export default function Home() {
       return;
     }
     
-      try {
-        await append({
-          role: 'user',
+    try {
+      // Get the last 10 problems and answers
+      const recentHistory = performanceHistory.slice(-10).map(record => ({
+        problem: record.problem,
+        userAnswer: record.userAnswer,
+        correctAnswer: record.correctAnswer,
+        wasCorrect: record.correct
+      }));
+
+      await append({
+        role: 'user',
         content: `Generate a math problem for a child using one of these operations: ${operations.join(', ')}. 
-        Return ONLY a JSON object with the following format:
-        {
-          "problem": "The math problem as text (e.g., '5 + 3 = ?')",
-          "answer": The numerical answer (e.g., 8),
-          "hebrewQuestion": "The question in Hebrew",
-          "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem",
-          "workingSteps": "Optional step-by-step working in mathematical notation to help visualize the solution process"
-        }`
-        });
+
+Here are the last ${recentHistory.length} problems the user attempted:
+${JSON.stringify(recentHistory, null, 2)}
+
+Based on their performance history, generate an appropriate problem that matches their current ability level.
+
+Return ONLY a JSON object with the following format:
+{
+  "problem": "The math problem as text (e.g., '5 + 3 = ?')",
+  "answer": The numerical answer (e.g., 8),
+  "hebrewQuestion": "The question in Hebrew",
+  "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem",
+  "workingSteps": "Optional step-by-step working in mathematical notation to help visualize the solution process"
+}`
+      });
     } catch (error) {
       console.error('Error generating problem:', error);
     } finally {
-    setIsGenerating(false);
+      setIsGenerating(false);
+    }
+  };
+
+  // Generate speech using a text-to-speech service
+  const generateSpeech = async (text: string, type: 'question' | 'hint') => {
+    console.log(`Generating ${type} speech for: ${text}`);
+    
+    try {
+      // Create a direct URL to the TTS API
+      const url = `/api/tts?text=${encodeURIComponent(text)}`;
+      
+      if (type === 'question') {
+        setAudioUrl(url);
+      } else {
+        setHintAudioUrl(url);
+      }
+    } catch (error) {
+      console.error(`Error generating ${type} speech:`, error);
+    }
+  };
+
+  // Play the question audio with proper loading handling
+  const playQuestionAudio = async () => {
+    if (audioRef.current && audioUrl) {
+      try {
+        audioRef.current.src = audioUrl;
+        await audioRef.current.load();
+        await audioRef.current.play();
+      } catch (err) {
+        console.error('Error playing audio:', err);
+      }
+    }
+  };
+
+  // Play the hint audio with proper loading handling
+  const playHintAudio = async () => {
+    if (hintAudioRef.current && hintAudioUrl) {
+      try {
+        hintAudioRef.current.src = hintAudioUrl;
+        await hintAudioRef.current.load();
+        await audioRef.current?.pause(); // Pause question audio if playing
+        await hintAudioRef.current.play();
+      } catch (err) {
+        console.error('Error playing hint audio:', err);
+      }
     }
   };
 
@@ -127,10 +198,10 @@ export default function Home() {
           // Generate audio for the hint in Hebrew
           generateSpeech(problemData.hebrewHint, 'hint');
           
-          // Automatically play the question audio
+          // Wait a bit longer before playing the audio to ensure it's loaded
           setTimeout(() => {
             playQuestionAudio();
-          }, 500);
+          }, 1000);
         }
       } catch (error) {
         console.error('Error parsing problem data:', error);
@@ -138,25 +209,7 @@ export default function Home() {
     }
   }, [messages]);
 
-  // Generate speech using a text-to-speech service
-  const generateSpeech = async (text: string, type: 'question' | 'hint') => {
-    console.log(`Generating ${type} speech for: ${text}`);
-    
-    try {
-    // Create a direct URL to the TTS API
-    const url = `/api/tts?text=${encodeURIComponent(text)}`;
-    
-    if (type === 'question') {
-      setAudioUrl(url);
-    } else {
-      setHintAudioUrl(url);
-    }
-    } catch (error) {
-      console.error(`Error generating ${type} speech:`, error);
-    }
-  };
-
-  // Check the user's answer
+  // Modify checkAnswer to update performance history without difficulty calculation
   const checkAnswer = () => {
     // Clear previous error
     setInputError(null);
@@ -175,11 +228,20 @@ export default function Home() {
       return;
     }
     
-    setIsCorrect(userAnswer === correctAnswer);
+    const isCorrect = userAnswer === correctAnswer;
+    setIsCorrect(isCorrect);
     
-    // Don't show hint automatically anymore
-    if (userAnswer === correctAnswer) {
-      // If correct, generate a new problem after a short delay
+    // Update performance history
+    const newHistory = [...performanceHistory, {
+      correct: isCorrect,
+      problem,
+      userAnswer,
+      correctAnswer: correctAnswer!
+    }];
+    setPerformanceHistory(newHistory);
+    
+    // If correct, generate a new problem after a short delay
+    if (isCorrect) {
       setTimeout(() => {
         generateProblem();
       }, 1500);
@@ -193,33 +255,11 @@ export default function Home() {
     }
   };
 
-  // Play the question audio
-  const playQuestionAudio = () => {
-    if (audioRef.current && audioUrl) {
-      audioRef.current.src = audioUrl;
-      audioRef.current.load();
-      audioRef.current.play().catch(err => {
-        console.error('Error playing audio:', err);
-      });
-    }
-  };
-
-  // Play the hint audio
-  const playHintAudio = () => {
-    if (hintAudioRef.current && hintAudioUrl) {
-      hintAudioRef.current.src = hintAudioUrl;
-      hintAudioRef.current.load();
-      hintAudioRef.current.play().catch(err => {
-        console.error('Error playing hint audio:', err);
-      });
-    }
-  };
-
   return (
     <main className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100 flex">
       {/* Main content area */}
       <div className="flex-1 py-8 px-6">
-        <h1 className="text-4xl font-bold text-center text-indigo-700 mb-8">Ari's Math Adventure</h1>
+        <h1 className="text-4xl font-bold text-center text-indigo-700 mb-8">עולם החשבון של ארי</h1>
         
         {!gameStarted ? (
           <div className="bg-white rounded-xl shadow-lg p-8 mb-8 max-w-3xl mx-auto">
