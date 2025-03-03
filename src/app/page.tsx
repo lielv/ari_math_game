@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useChat } from 'ai/react';
 import { gameConfig } from './lib/gameConfig';
 import MathAnimation from './components/MathAnimation';
@@ -43,6 +43,7 @@ export default function Home() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hintAudioRef = useRef<HTMLAudioElement | null>(null);
   const feedbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const currentProblemRef = useRef<string | null>(null); // Add ref to track current problem
 
   // Add ref for input focus
   const inputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +102,7 @@ export default function Home() {
     setWorkingSteps('');
     setInputError(null);
     setHintAudioUrl(null); // Clear hint audio URL
+    currentProblemRef.current = null; // Reset the current problem ref
     
     // Get selected operations
     const operations = Object.entries(selectedOperations)
@@ -136,7 +138,7 @@ Return ONLY a JSON object with the following format:
   "answer": The numerical answer (e.g., 8),
   "hebrewQuestion": "The question in Hebrew in the format 'כמה זה' and then the math problem. Use words only (2+2 should be two plus two)",
   "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem. Use words only (2+2 should be two plus two)",
-  "workingSteps": "Step-by-step working in mathematical notation to help visualize the solution process. MAKE SURE it is aligned with the hebrewHint, so the user can hear the steps in hebrewHint and understand it using the visualization for example if hebrewHint for 46 + 28 = ? is "כדי לפתור את הבעיה, נוסיף את המספרים בעמודות. ראשית נוסיף את הספרות בעמודת האחדות: שש ועוד שמונה שווה ארבע עשרה. נרשום ארבע בעמודת האחדות ונוסיף את האחד לעמודת העשרות. עכשיו נוסיף את הספרות בעמודת העשרות: ארבע ועוד שתיים ועוד אחד שווה שבע. התוצאה היא שבעים וארבע" the notation should be  (8+6) + (40+20)  = 74",
+  "workingSteps": "Step-by-step working in mathematical notation to help visualize the solution process. MAKE SURE it is aligned with the hebrewHint, so the user can hear the steps in hebrewHint and understand it using the visualization for example if hebrewHint for 46 + 28 = ? is &quot;כדי לפתור את הבעיה, נוסיף את המספרים בעמודות. ראשית נוסיף את הספרות בעמודת האחדות: שש ועוד שמונה שווה ארבע עשרה. נרשום ארבע בעמודת האחדות ונוסיף את האחד לעמודת העשרות. עכשיו נוסיף את הספרות בעמודת העשרות: ארבע ועוד שתיים ועוד אחד שווה שבע. התוצאה היא שבעים וארבע&quot; the notation should be  (8+6) + (40+20)  = 74"
 }`
       });
     } catch (error) {
@@ -176,33 +178,32 @@ Return ONLY a JSON object with the following format:
       // Create a direct URL to the TTS API
       const url = `/api/tts?text=${encodeURIComponent(text)}`;
       
-      // Return a promise that resolves when the URL is set
-      return new Promise<void>((resolve) => {
-        if (type === 'question') {
-          setAudioUrl(url);
-        } else {
-          setHintAudioUrl(url);
-        }
-        resolve();
-      });
+      // Set the URL in state and return it
+      if (type === 'question') {
+        setAudioUrl(url);
+      } else {
+        setHintAudioUrl(url);
+      }
+      return url;
     } catch (error) {
       console.error(`Error generating ${type} speech:`, error);
+      return null;
     }
   };
 
   // Play the question audio with proper loading handling
-  const playQuestionAudio = async () => {
+  const playQuestionAudio = useCallback(async (url?: string) => {
     stopAllAudio(); // Stop any playing audio before starting new one
-    if (audioRef.current && audioUrl) {
+    if (audioRef.current) {
       try {
-        audioRef.current.src = audioUrl;
+        audioRef.current.src = url || audioUrl || '';
         await audioRef.current.load();
         await audioRef.current.play();
       } catch (err) {
         console.error('Error playing audio:', err);
       }
     }
-  };
+  }, [audioUrl, stopAllAudio]);
 
   // Process the response from the AI
   useEffect(() => {
@@ -222,28 +223,36 @@ Return ONLY a JSON object with the following format:
             setWorkingSteps(problemData.workingSteps);
           }
           
-          // Store hint text and generate both audios
+          // Store hint text
           setHintText(problemData.hebrewHint);
           
-          // Generate both audios immediately
-          const generateAudios = async () => {
-            // Generate question audio and play it immediately
-            await generateSpeech(problemData.hebrewQuestion, 'question');
-            setTimeout(() => {
-              playQuestionAudio();
-            }, 500);
+          // Only generate audio if this is a new problem
+          if (currentProblemRef.current !== problemData.problem) {
+            currentProblemRef.current = problemData.problem;
             
-            // Generate hint audio but don't play it yet
-            await generateSpeech(problemData.hebrewHint, 'hint');
-          };
-          
-          generateAudios();
+            // Generate both audios immediately
+            const generateAudios = async () => {
+              // Generate question audio and play it immediately
+              const questionUrl = await generateSpeech(problemData.hebrewQuestion, 'question');
+              // Generate hint audio but don't play it yet
+              await generateSpeech(problemData.hebrewHint, 'hint');
+              
+              // Play question audio with the new URL
+              if (questionUrl) {
+                setTimeout(() => {
+                  playQuestionAudio(questionUrl);
+                }, 500);
+              }
+            };
+            
+            generateAudios();
+          }
         }
       } catch (error) {
         console.error('Error parsing problem data:', error);
       }
     }
-  }, [messages]);
+  }, [messages, playQuestionAudio]);
 
   // Handle showing hint - now just plays the already generated audio
   const handleShowHint = () => {
@@ -351,7 +360,7 @@ Return ONLY a JSON object with the following format:
               <div className="flex justify-between items-center mb-4">
                 {audioUrl && (
                   <button
-                    onClick={playQuestionAudio}
+                    onClick={() => playQuestionAudio()}
                     className="flex items-center text-sky-600 hover:text-sky-800"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -382,15 +391,8 @@ Return ONLY a JSON object with the following format:
             {/* Answer input */}
             <div className="bg-white rounded-xl shadow-lg p-8 mb-8 border-4 border-violet-200">
               <h2 className="text-xl font-semibold text-violet-700 mb-4 text-right">:הַתְּשׁוּבָה שֶׁלְּךָ</h2>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={checkAnswer}
-                  disabled={!answer || isGenerating || isLoading}
-                  className="bg-emerald-500 text-white px-6 py-4 rounded-lg hover:bg-emerald-600 transition-colors disabled:bg-gray-400 text-xl"
-                >
-                  בְּדִיקָה
-                </button>
-                <div className="flex-1 relative">
+              <div className="flex flex-col gap-4">
+                <div className="relative">
                   <input
                     ref={inputRef}
                     type="text"
@@ -402,6 +404,13 @@ Return ONLY a JSON object with the following format:
                     disabled={isGenerating || isLoading}
                   />
                 </div>
+                <button
+                  onClick={checkAnswer}
+                  disabled={!answer || isGenerating || isLoading}
+                  className="w-full bg-emerald-500 text-white px-6 py-4 rounded-lg hover:bg-emerald-600 transition-colors disabled:bg-gray-400 text-xl"
+                >
+                  בְּדִיקָה
+                </button>
               </div>
               
               {/* Input validation error */}
