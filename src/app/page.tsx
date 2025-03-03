@@ -23,6 +23,7 @@ export default function Home() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [hintAudioUrl, setHintAudioUrl] = useState<string | null>(null);
   const [workingSteps, setWorkingSteps] = useState<string>('');
+  const [inputError, setInputError] = useState<string | null>(null);
   
   // Refs for audio elements
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -60,6 +61,7 @@ export default function Home() {
     setShowHint(false);
     setAnswer('');
     setWorkingSteps('');
+    setInputError(null);
     
     // Get selected operations
     const operations = Object.entries(selectedOperations)
@@ -117,13 +119,7 @@ export default function Home() {
           
           // Automatically play the question audio
           setTimeout(() => {
-            if (audioRef.current) {
-              audioRef.current.src = `/api/tts?text=${encodeURIComponent(problemData.hebrewQuestion)}`;
-              audioRef.current.load();
-              audioRef.current.play().catch(err => {
-                console.error('Error auto-playing audio:', err);
-              });
-            }
+            playQuestionAudio();
           }, 500);
         }
       } catch (error) {
@@ -136,19 +132,36 @@ export default function Home() {
   const generateSpeech = async (text: string, type: 'question' | 'hint') => {
     console.log(`Generating ${type} speech for: ${text}`);
     
-    // Create a direct URL to the TTS API
-    if (type === 'question') {
-      setAudioUrl(`/api/tts?text=${encodeURIComponent(text)}`);
-    } else {
-      setHintAudioUrl(`/api/tts?text=${encodeURIComponent(text)}`);
+    try {
+      // Create a direct URL to the TTS API
+      const url = `/api/tts?text=${encodeURIComponent(text)}`;
+      
+      if (type === 'question') {
+        setAudioUrl(url);
+      } else {
+        setHintAudioUrl(url);
+      }
+    } catch (error) {
+      console.error(`Error generating ${type} speech:`, error);
     }
   };
 
   // Check the user's answer
   const checkAnswer = () => {
-    const userAnswer = parseFloat(answer);
+    // Clear previous error
+    setInputError(null);
+    
+    // Validate input is a number
+    const userAnswerTrimmed = answer.trim();
+    const userAnswer = parseFloat(userAnswerTrimmed);
+    
+    if (userAnswerTrimmed === '') {
+      setInputError('Please enter an answer');
+      return;
+    }
     
     if (isNaN(userAnswer)) {
+      setInputError('Not a valid number');
       return;
     }
     
@@ -199,77 +212,97 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-5xl mx-auto">
+    <main className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100 flex">
+      {/* Sidebar with operation checkboxes */}
+      <div className="w-64 bg-white shadow-lg p-6 flex flex-col">
+        <h2 className="text-xl font-bold text-indigo-600 mb-6">Math Operations</h2>
+        
+        <div className="space-y-4 mb-8">
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="addition"
+              checked={selectedOperations.addition}
+              onChange={() => handleOperationChange('addition')}
+              className="w-5 h-5 text-indigo-600"
+            />
+            <label htmlFor="addition" className="text-lg">
+              <span className="font-semibold">חיבור</span> | Addition
+            </label>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="subtraction"
+              checked={selectedOperations.subtraction}
+              onChange={() => handleOperationChange('subtraction')}
+              className="w-5 h-5 text-indigo-600"
+            />
+            <label htmlFor="subtraction" className="text-lg">
+              <span className="font-semibold">חיסור</span> | Subtraction
+            </label>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="multiplication"
+              checked={selectedOperations.multiplication}
+              onChange={() => handleOperationChange('multiplication')}
+              className="w-5 h-5 text-indigo-600"
+            />
+            <label htmlFor="multiplication" className="text-lg">
+              <span className="font-semibold">כפל</span> | Multiplication
+            </label>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="division"
+              checked={selectedOperations.division}
+              onChange={() => handleOperationChange('division')}
+              className="w-5 h-5 text-indigo-600"
+            />
+            <label htmlFor="division" className="text-lg">
+              <span className="font-semibold">חילוק</span> | Division
+            </label>
+          </div>
+        </div>
+        
+        {!gameStarted ? (
+          <button
+            onClick={startGame}
+            className="w-full py-3 bg-indigo-600 text-white text-lg font-semibold rounded-lg hover:bg-indigo-700 transition-colors mt-auto"
+          >
+            Let's Play!
+          </button>
+        ) : (
+          <button
+            onClick={generateProblem}
+            disabled={isGenerating || isLoading}
+            className="w-full py-3 bg-indigo-600 text-white text-lg font-semibold rounded-lg hover:bg-indigo-700 transition-colors mt-auto disabled:bg-gray-400"
+          >
+            New Problem
+          </button>
+        )}
+      </div>
+      
+      {/* Main content area */}
+      <div className="flex-1 py-8 px-6">
         <h1 className="text-4xl font-bold text-center text-indigo-700 mb-8">Ari's Math Adventure</h1>
         
         {!gameStarted ? (
-          <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-            <h2 className="text-2xl font-bold text-indigo-600 mb-6">Choose Math Operations</h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-              <div className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  id="addition"
-                  checked={selectedOperations.addition}
-                  onChange={() => handleOperationChange('addition')}
-                  className="w-5 h-5 text-indigo-600"
-                />
-                <label htmlFor="addition" className="text-xl">
-                  <span className="font-semibold">חיבור</span> | Addition
-                </label>
-              </div>
-              
-              <div className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  id="subtraction"
-                  checked={selectedOperations.subtraction}
-                  onChange={() => handleOperationChange('subtraction')}
-                  className="w-5 h-5 text-indigo-600"
-                />
-                <label htmlFor="subtraction" className="text-xl">
-                  <span className="font-semibold">חיסור</span> | Subtraction
-                </label>
-              </div>
-              
-              <div className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  id="multiplication"
-                  checked={selectedOperations.multiplication}
-                  onChange={() => handleOperationChange('multiplication')}
-                  className="w-5 h-5 text-indigo-600"
-                />
-                <label htmlFor="multiplication" className="text-xl">
-                  <span className="font-semibold">כפל</span> | Multiplication
-                </label>
-              </div>
-              
-              <div className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  id="division"
-                  checked={selectedOperations.division}
-                  onChange={() => handleOperationChange('division')}
-                  className="w-5 h-5 text-indigo-600"
-                />
-                <label htmlFor="division" className="text-xl">
-                  <span className="font-semibold">חילוק</span> | Division
-                </label>
-              </div>
+          <div className="bg-white rounded-xl shadow-lg p-8 mb-8 max-w-3xl mx-auto">
+            <h2 className="text-2xl font-bold text-indigo-600 mb-6">Welcome to Math Adventure!</h2>
+            <p className="text-lg mb-6">Select the math operations you want to practice from the sidebar, then click "Let's Play!" to start.</p>
+            <div className="flex justify-center">
+              <img src="/math-illustration.svg" alt="Math Adventure" className="w-64 h-64 opacity-70" />
             </div>
-            
-            <button
-              onClick={startGame}
-              className="w-full py-4 bg-indigo-600 text-white text-xl font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              Let's Play!
-            </button>
           </div>
         ) : (
-          <>
+          <div className="max-w-3xl mx-auto">
             {/* Game interface */}
             <div className="mb-6 flex justify-between items-center">
               <button
@@ -279,15 +312,7 @@ export default function Home() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
                 </svg>
-                Back to Settings
-              </button>
-              
-              <button
-                onClick={generateProblem}
-                disabled={isGenerating || isLoading}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400"
-              >
-                {isGenerating ? 'Generating...' : 'New Problem'}
+                Back to Welcome
               </button>
             </div>
             
@@ -328,7 +353,7 @@ export default function Home() {
               <h2 className="text-xl font-semibold text-gray-700 mb-4">Your Answer:</h2>
               <div className="flex items-center space-x-4">
                 <input
-                  type="number"
+                  type="text"
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
                   onKeyPress={handleKeyPress}
@@ -345,8 +370,15 @@ export default function Home() {
                 </button>
               </div>
               
+              {/* Input validation error */}
+              {inputError && (
+                <div className="mt-2 text-red-600">
+                  {inputError}
+                </div>
+              )}
+              
               {/* Feedback */}
-              {isCorrect !== null && (
+              {isCorrect !== null && !inputError && (
                 <div className={`mt-4 p-4 rounded-lg ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {isCorrect ? (
                     <div className="flex items-center">
@@ -441,7 +473,7 @@ export default function Home() {
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
     </main>
