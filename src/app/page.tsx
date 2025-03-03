@@ -226,8 +226,8 @@ export default function Home() {
               onChange={() => handleOperationChange('addition')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="addition" className="text-lg">
-              <span className="font-semibold">חיבור</span> | Addition
+            <label htmlFor="addition" className="text-lg flex items-center">
+              <span className="font-semibold ml-2">חיבור</span> | <span className="ml-1">Addition (+)</span>
             </label>
           </div>
           
@@ -239,8 +239,8 @@ export default function Home() {
               onChange={() => handleOperationChange('subtraction')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="subtraction" className="text-lg">
-              <span className="font-semibold">חיסור</span> | Subtraction
+            <label htmlFor="subtraction" className="text-lg flex items-center">
+              <span className="font-semibold ml-2">חיסור</span> | <span className="ml-1">Subtraction (-)</span>
             </label>
           </div>
           
@@ -252,8 +252,8 @@ export default function Home() {
               onChange={() => handleOperationChange('multiplication')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="multiplication" className="text-lg">
-              <span className="font-semibold">כפל</span> | Multiplication
+            <label htmlFor="multiplication" className="text-lg flex items-center">
+              <span className="font-semibold ml-2">כפל</span> | <span className="ml-1">Multiplication (×)</span>
             </label>
           </div>
           
@@ -265,8 +265,8 @@ export default function Home() {
               onChange={() => handleOperationChange('division')}
               className="w-5 h-5 text-indigo-600"
             />
-            <label htmlFor="division" className="text-lg">
-              <span className="font-semibold">חילוק</span> | Division
+            <label htmlFor="division" className="text-lg flex items-center">
+              <span className="font-semibold ml-2">חילוק</span> | <span className="ml-1">Division (÷)</span>
             </label>
           </div>
         </div>
@@ -352,15 +352,22 @@ export default function Home() {
             <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
               <h2 className="text-xl font-semibold text-gray-700 mb-4">Your Answer:</h2>
               <div className="flex items-center space-x-4">
-                <input
-                  type="text"
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  className="flex-1 p-4 text-2xl border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="Enter your answer..."
-                  disabled={isGenerating || isLoading}
-                />
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="w-full p-4 text-2xl border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="Enter your answer..."
+                    disabled={isGenerating || isLoading}
+                  />
+                  {answer && (
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-2xl text-gray-500">
+                      = {answer}
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={checkAnswer}
                   disabled={!answer || isGenerating || isLoading}
