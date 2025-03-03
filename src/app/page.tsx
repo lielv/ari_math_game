@@ -36,6 +36,7 @@ export default function Home() {
   const [hintAudioUrl, setHintAudioUrl] = useState<string | null>(null);
   const [workingSteps, setWorkingSteps] = useState<string>('');
   const [inputError, setInputError] = useState<string | null>(null);
+  const [hintText, setHintText] = useState<string>(''); // Store hint text for later use
   
   // Refs for audio elements
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -76,14 +77,28 @@ export default function Home() {
     generateProblem();
   };
 
-  // Modify generateProblem to use performance history
+  // Function to stop all audio playback
+  const stopAllAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (hintAudioRef.current) {
+      hintAudioRef.current.pause();
+      hintAudioRef.current.currentTime = 0;
+    }
+  };
+
+  // Modify generateProblem to stop audio when generating new problem
   const generateProblem = async () => {
+    stopAllAudio(); // Stop any playing audio
     setIsGenerating(true);
     setIsCorrect(null);
     setShowHint(false);
     setAnswer('');
     setWorkingSteps('');
     setInputError(null);
+    setHintAudioUrl(null); // Clear hint audio URL
     
     // Get selected operations
     const operations = Object.entries(selectedOperations)
@@ -117,15 +132,37 @@ Return ONLY a JSON object with the following format:
 {
   "problem": "The math problem as text (e.g., '5 + 3 = ?')",
   "answer": The numerical answer (e.g., 8),
-  "hebrewQuestion": "The question in Hebrew",
-  "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem",
-  "workingSteps": "Optional step-by-step working in mathematical notation to help visualize the solution process"
+  "hebrewQuestion": "The question in Hebrew in the format 'כמה זה' and then the math problem. Use words only (2+2 should be two plus two)",
+  "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem. Use words only (2+2 should be two plus two)",
+  "workingSteps": "Step-by-step working in mathematical notation to help visualize the solution process. MAKE SURE it is aligned with the hebrewHint, so the user can hear the steps in hebrewHint and understand it using the visualization for example if hebrewHint for 46 + 28 = ? is "כדי לפתור את הבעיה, נוסיף את המספרים בעמודות. ראשית נוסיף את הספרות בעמודת האחדות: שש ועוד שמונה שווה ארבע עשרה. נרשום ארבע בעמודת האחדות ונוסיף את האחד לעמודת העשרות. עכשיו נוסיף את הספרות בעמודת העשרות: ארבע ועוד שתיים ועוד אחד שווה שבע. התוצאה היא שבעים וארבע” the notation should be  (8+6) + (40+20)  = 74",
 }`
       });
     } catch (error) {
       console.error('Error generating problem:', error);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Play the hint audio with proper loading handling
+  const playHintAudio = async () => {
+    stopAllAudio(); // Stop any playing audio before starting new one
+    try {
+      if (!hintAudioUrl && hintText) {
+        // Generate hint audio only when needed
+        await generateSpeech(hintText, 'hint');
+      }
+      
+      // Wait a short moment for the audio URL to be set
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (hintAudioRef.current && hintAudioUrl) {
+        hintAudioRef.current.src = hintAudioUrl;
+        await hintAudioRef.current.load();
+        await hintAudioRef.current.play();
+      }
+    } catch (err) {
+      console.error('Error playing hint audio:', err);
     }
   };
 
@@ -137,11 +174,15 @@ Return ONLY a JSON object with the following format:
       // Create a direct URL to the TTS API
       const url = `/api/tts?text=${encodeURIComponent(text)}`;
       
-      if (type === 'question') {
-        setAudioUrl(url);
-      } else {
-        setHintAudioUrl(url);
-      }
+      // Return a promise that resolves when the URL is set
+      return new Promise<void>((resolve) => {
+        if (type === 'question') {
+          setAudioUrl(url);
+        } else {
+          setHintAudioUrl(url);
+        }
+        resolve();
+      });
     } catch (error) {
       console.error(`Error generating ${type} speech:`, error);
     }
@@ -149,6 +190,7 @@ Return ONLY a JSON object with the following format:
 
   // Play the question audio with proper loading handling
   const playQuestionAudio = async () => {
+    stopAllAudio(); // Stop any playing audio before starting new one
     if (audioRef.current && audioUrl) {
       try {
         audioRef.current.src = audioUrl;
@@ -156,20 +198,6 @@ Return ONLY a JSON object with the following format:
         await audioRef.current.play();
       } catch (err) {
         console.error('Error playing audio:', err);
-      }
-    }
-  };
-
-  // Play the hint audio with proper loading handling
-  const playHintAudio = async () => {
-    if (hintAudioRef.current && hintAudioUrl) {
-      try {
-        hintAudioRef.current.src = hintAudioUrl;
-        await hintAudioRef.current.load();
-        await audioRef.current?.pause(); // Pause question audio if playing
-        await hintAudioRef.current.play();
-      } catch (err) {
-        console.error('Error playing hint audio:', err);
       }
     }
   };
@@ -192,22 +220,41 @@ Return ONLY a JSON object with the following format:
             setWorkingSteps(problemData.workingSteps);
           }
           
-          // Generate audio for the question in Hebrew
-          generateSpeech(problemData.hebrewQuestion, 'question');
+          // Store hint text and generate both audios
+          setHintText(problemData.hebrewHint);
           
-          // Generate audio for the hint in Hebrew
-          generateSpeech(problemData.hebrewHint, 'hint');
+          // Generate both audios immediately
+          const generateAudios = async () => {
+            // Generate question audio and play it immediately
+            await generateSpeech(problemData.hebrewQuestion, 'question');
+            setTimeout(() => {
+              playQuestionAudio();
+            }, 500);
+            
+            // Generate hint audio but don't play it yet
+            await generateSpeech(problemData.hebrewHint, 'hint');
+          };
           
-          // Wait a bit longer before playing the audio to ensure it's loaded
-          setTimeout(() => {
-            playQuestionAudio();
-          }, 1000);
+          generateAudios();
         }
       } catch (error) {
         console.error('Error parsing problem data:', error);
       }
     }
   }, [messages]);
+
+  // Handle showing hint - now just plays the already generated audio
+  const handleShowHint = () => {
+    setShowHint(true);
+    if (hintAudioRef.current && hintAudioUrl) {
+      stopAllAudio();
+      hintAudioRef.current.src = hintAudioUrl;
+      hintAudioRef.current.load();
+      hintAudioRef.current.play().catch(err => {
+        console.error('Error playing hint audio:', err);
+      });
+    }
+  };
 
   // Modify checkAnswer to update performance history without difficulty calculation
   const checkAnswer = () => {
@@ -376,7 +423,7 @@ Return ONLY a JSON object with the following format:
             <div className="bg-white rounded-xl shadow-lg p-8">
               <div className="flex justify-between items-center mb-4">
                 <button
-                  onClick={playHintAudio}
+                  onClick={handleShowHint}
                   className="flex items-center text-indigo-600 hover:text-indigo-800"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -389,7 +436,7 @@ Return ONLY a JSON object with the following format:
               
               {!showHint ? (
                 <button
-                  onClick={() => setShowHint(true)}
+                  onClick={handleShowHint}
                   className="w-full py-3 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors"
                 >
                   הצג רמז

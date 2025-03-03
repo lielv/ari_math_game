@@ -36,9 +36,9 @@ export async function POST(req: Request) {
       {
         "problem": "The math problem as text (e.g., '5 + 3 = ?')",
         "answer": The numerical answer (e.g., 8),
-        "hebrewQuestion": "The question in Hebrew with numbers as words",
-        "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem, with numbers as words",
-        "workingSteps": "Optional step-by-step working in mathematical notation to help visualize the solution process"
+        "hebrewQuestion": "The question in Hebrew in the format 'כמה זה' and then the math problem.",
+        "hebrewHint": "A step-by-step explanation in Hebrew of how to solve this problem.",
+        "workingSteps": "Optional step-by-step working in mathematical notation to help visualize the solution process which is aligned with the hebrewHint, so the user can see the steps and understand the solution"  
       }`,
     });
 
